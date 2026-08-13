@@ -110,7 +110,7 @@ Options:
   -a <name>               anime name (opens an fzf picker)
   -s <slug>               anime slug/uuid from anime.list; ignored when -a is set
   -e <num1,num3-num4...>  episode numbers: comma list, range with "-", all with "*"
-  -r <resolution>         resolution: "1080", "720"... (default: highest)
+  -r <resolution>         resolution: "1080", "720"... (default: 720)
   -o <language>           audio language: "eng", "jpn"...
   -l                      print the m3u8 link only, do not download
   -d                      debug mode
