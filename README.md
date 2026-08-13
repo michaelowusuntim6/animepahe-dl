@@ -1,103 +1,93 @@
 # animepahe-dl
 
-Download anime episodes from [animepahe](https://animepahe.pw) in the terminal.
+Download anime episodes from [animepahe](https://animepahe.pw) directly on your Android device using Termux.
 
-The script resolves the anime's episode list from the animepahe API, unpacks the
-kwik player page to find the real HLS playlist, and downloads every fragment
-with yt-dlp — then remuxes the finished file into a clean MP4.
+The script resolves the anime's episode list from the animepahe API, unpacks the kwik player page to find the real HLS playlist, downloads every fragment with `yt-dlp`, decrypts AES‑128 streams natively, and remuxes the finished file into a clean MP4.
 
 ## Features
 
 - Search by anime name (`-a`) with an interactive `fzf` picker, or use a slug directly (`-s`)
-- Single, comma-separated, ranged, and "all episodes" batch downloads (`-e 1,2,5-7,*`)
-- Resolution (`-r`) and audio-language (`-o`) selection
-- Prints the m3u8 URL without downloading (`-l`) so you can stream it in a media player
-- Automatic Cloudflare `cf_clearance` refresh (`./refresh_cookie.sh` or the `anime-dl` wrapper)
-- AES-128-encrypted HLS handled natively over HTTP/2; output remuxed to MP4
+- Single, comma‑separated, ranged, and "all episodes" batch downloads (`-e 1,2,5-7,*`)
+- Resolution (`-r`) and audio‑language (`-o`) selection
+- Print the m3u8 URL without downloading (`-l`) to stream directly in a media player
+- Automatic Cloudflare `cf_clearance` refresh via `./refresh_cookie.sh` or the `anime-dl` wrapper
+- AES‑128‑encrypted HLS handled natively over HTTP/2; output remuxed to MP4
+- Concurrent fragment downloads for faster speed
 
 ## Requirements
 
-Target platform: **Debian / Ubuntu / Pop!_OS** (anything with `apt`).
+Target platform: **Termux** (Android arm64/aarch64).
 
-| Component            | Purpose                                                    |
-| -------------------- | ---------------------------------------------------------- |
-| `curl`, `jq`, `fzf`  | animepahe API requests, JSON parsing, anime picker         |
-| `ffmpeg`             | remuxing the downloaded stream into MP4                    |
-| `xvfb`               | headless display for the Cloudflare cookie refresher       |
-| `python3` + `pip`    | runs `get_cookie.py` (undetected_chromedriver)             |
-| Chrome / Chromium    | solves the Cloudflare Turnstile challenge                  |
-| `pipx` + `yt-dlp[default]` | downloads the HLS stream (curl_cffi impersonation)    |
-| `pycryptodomex` (in the yt-dlp venv) | native AES-128 HLS decryption               |
+| Component | Purpose |
+| :--- | :--- |
+| `curl`, `jq`, `fzf` | API requests, JSON parsing, interactive anime picker |
+| `ffmpeg` | Remuxing the downloaded stream into MP4 |
+| `chromium` | Headless browser for solving Cloudflare Turnstile |
+| `xorg-server-xvfb` | Virtual display for headless Chromium |
+| `python3.11` + `pip` | Runs `get_cookie.py` and the local JS unpacker |
+| `undetected-chromedriver` | Bypasses Cloudflare detection in headless Chromium |
+| `yt-dlp[curl-cffi]` | Downloads HLS streams with browser impersonation |
+| `pycryptodomex` | Native AES‑128 decryption (avoids ffmpeg HTTP/1.1 limitations) |
 
-> Why pycryptodomex matters: the CDN that hosts the episodes (e.g.
-> `vault-*.uwucdn.top`) rejects **HTTP/1.1** requests with 403 Forbidden.
-> ffmpeg's downloader is HTTP/1.1-only, so yt-dlp must decrypt AES-128 streams
-> itself (over HTTP/2) using pycryptodomex. Do **not** add `--downloader ffmpeg`.
+> **Why `pycryptodomex` is essential**: the CDN that hosts the episodes (e.g. `vault-*.uwucdn.top`) rejects **HTTP/1.1** requests with 403 Forbidden. `ffmpeg`'s downloader is HTTP/1.1‑only, so `yt-dlp` must decrypt AES‑128 streams natively (over HTTP/2) using `pycryptodomex`. Never add `--downloader ffmpeg` to `yt-dlp`.
 
-## Installation
+## Installation (Termux)
 
-### Quick (recommended)
-
-Run the setup script. It is idempotent — safe to re-run, and it only installs
-what is missing:
+### 1. Grant storage access
 
 ```bash
-./setup.sh
+termux-setup-storage
 ```
 
-`setup.sh` will:
-
-1. install the system packages with `apt` (asks for your password via `sudo`);
-2. install Google Chrome if no Chrome/Chromium binary is found;
-3. install `pipx` and `yt-dlp[default]`, then inject `pycryptodomex` and
-   `curl_cffi` into the yt-dlp venv;
-4. create a repo-local `.venv` with `undetected_chromedriver` for the cookie
-   refresher;
-5. verify the install and offer to refresh the cookie immediately.
-
-### Manual
+### 2. Install system packages
 
 ```bash
-# System packages (Debian/Ubuntu/Pop!_OS)
-sudo apt update
-sudo apt install -y curl jq fzf ffmpeg xvfb python3 python3-venv python3-pip pipx
-
-# Chrome (or install Chromium; see CHROME_BIN below)
-# ... install Google Chrome from https://www.google.com/chrome/ ...
-
-# yt-dlp in its own venv, with AES-128 + impersonation support
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
-export PATH="$HOME/.local/bin:$PATH"
-pipx install "yt-dlp[default]"
-pipx inject yt-dlp pycryptodomex
-
-# Cookie refresher dependencies
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+pkg update && pkg upgrade -y
+pkg install -y x11-repo
+pkg install tur-repo -y
+pkg update
+pkg install -y jq fzf curl ffmpeg chromium xorg-server-xvfb python3.11 wget git
 ```
 
-## First run: refresh the cookie
+### 3. Install Python packages
 
-animepahe is behind Cloudflare, so requests need a fresh `cf_clearance` cookie.
-The refresher launches a real browser headlessly (via `xvfb-run`), waits for the
-challenge to pass, and writes the cookie and user-agent into `config.json`:
+```bash
+pip3.11 install --upgrade pip wheel
+pip3.11 install setuptools selenium undetected-chromedriver pycryptodomex "yt-dlp[curl-cffi]"
+```
+
+### 4. Create a symlink for chromedriver
+
+`undetected-chromedriver` expects `chromedriver.exe` on some platforms. Create a symlink:
+
+```bash
+ln -s /data/data/com.termux/files/usr/bin/chromedriver /data/data/com.termux/files/usr/bin/chromedriver.exe
+```
+
+### 5. Copy the script files
+
+Place your `animepahe-dl` folder into the Download directory on your internal storage (e.g., using a file manager or adb), then copy it to Termux home:
+
+```bash
+cp -r /sdcard/Download/animepahe-dl ~/
+cd ~/animepahe-dl
+chmod +x refresh_cookie.sh animepahe-dl.sh get_cookie.py anime-dl
+```
+
+### 6. First run: refresh the cookie
+
+Animepahe is behind Cloudflare, so you need a fresh `cf_clearance` cookie. Run the refresher once:
 
 ```bash
 ./refresh_cookie.sh
 ```
 
-The `anime-dl` wrapper does this automatically before every download:
+This will launch a headless Chromium browser via Xvfb, solve the Turnstile challenge automatically, and write the cookie to `config.json`. If you get an error, you can manually enter the cookie (the script will prompt you).
+
+The `anime-dl` wrapper automatically refreshes the cookie before every download:
 
 ```bash
 ./anime-dl -a "Naruto" -e 1
-```
-
-If the auto-detected browser is wrong for your machine, override it with
-environment variables:
-
-```bash
-CHROME_BIN=/snap/bin/chromium CHROMEDRIVER_BIN=/usr/bin/chromedriver ./refresh_cookie.sh
 ```
 
 ## Usage
@@ -117,7 +107,7 @@ Options:
   -h | --help             show this help
 ```
 
-### Examples
+## Examples
 
 ```bash
 # Search and pick an anime interactively, then download everything
@@ -135,60 +125,55 @@ Options:
 # List the m3u8 URL without downloading (handy for streaming)
 ./animepahe-dl.sh -a "samurai 7" -e 1 -l
 
-# Stream it directly with mpv
+# Stream it directly with mpv (install mpv via pkg first)
 mpv --http-header-fields="Referer: https://kwik.cx/" \
     "$(./animepahe-dl.sh -a "samurai 7" -e 1 -l)"
 ```
 
-Downloads are saved to `~/Videos/Anime/<Anime Name>/<episode>.mp4`.
+Downloads are saved to `~/storage/downloads/Anime/<Anime Name>/<episode>.mp4`, which is accessible from your Android file manager under **Internal Storage → Download → Anime**.
 
 ## Troubleshooting
 
-**`ERROR: ffmpeg exited with code 8` / `Server returned 403 Forbidden` from
-`vault-*.uwucdn.top`**
+**`ERROR: ffmpeg exited with code 8` / `Server returned 403 Forbidden from vault-*.uwucdn.top`**
 
-The CDN only accepts HTTP/2, but ffmpeg's downloader speaks HTTP/1.1. Make sure
-yt-dlp uses its native downloader and that `pycryptodomex` is installed inside
-the yt-dlp venv so AES-128 streams are decrypted natively:
+The CDN only accepts HTTP/2; ffmpeg's downloader is HTTP/1.1‑only. Make sure `pycryptodomex` is installed and `yt-dlp` uses its native downloader (do not add `--downloader ffmpeg`).
 
 ```bash
-pipx inject yt-dlp pycryptodomex
+pip3.11 install pycryptodomex
 ```
 
-**`Invalid API response (likely expired cookie)` / `Need a new cf value in
-config.json`**
+**Invalid API response (likely expired cookie) / Need a new `cf` value in `config.json`**
 
-The `cf_clearance` cookie expired. Run `./refresh_cookie.sh` (or use the
-`anime-dl` wrapper). The cookie typically lasts about 30 minutes, so refresh it
-before large batch downloads.
+The `cf_clearance` cookie expired (usually after ~30 minutes). Run `./refresh_cookie.sh` (or use the `anime-dl` wrapper). Refresh the cookie before large batch downloads.
 
-**`Failed to get cookie`**
+**Failed to get cookie**
 
-Check that Chrome/Chromium is installed and that `undetected_chromedriver`
-can be imported by the interpreter running `get_cookie.py` (`.venv/bin/python`
-after `./setup.sh`). Set `CHROME_BIN` / `CHROMEDRIVER_BIN` if your browser or
-driver lives somewhere unusual.
+- Check that Chromium is installed: `pkg install chromium`
+- Ensure `undetected-chromedriver` is installed: `pip3.11 install undetected-chromedriver`
+- Verify the symlink exists: `ls -l /data/data/com.termux/files/usr/bin/chromedriver.exe`
+- If you still get errors, you can manually enter the cookie (the script will prompt you after the automated attempt fails).
 
 **The picker selects the wrong anime**
 
-Search terms match multiple titles. Use the exact title in the fzf picker, or
-find the stable slug in `anime.list` and use `-s`.
+Search terms match multiple titles. Use the exact title in the fzf picker, or find the stable slug in `anime.list` and use `-s`.
 
 ## File layout
 
-| File                | Purpose                                                            |
-| ------------------- | ------------------------------------------------------------------ |
-| `animepahe-dl.sh`   | main downloader                                                    |
-| `anime-dl`          | wrapper: refreshes the cookie, then downloads                      |
-| `refresh_cookie.sh` | solves Cloudflare and updates `config.json`                        |
-| `get_cookie.py`     | undetected_chromedriver automation used by `refresh_cookie.sh`     |
-| `config.json`       | current `cf_clearance` + user-agent (auto-generated, git-ignored)  |
-| `setup.sh`          | one-shot installer (idempotent)                                    |
-| `requirements.txt`  | Python deps for the cookie refresher (`undetected-chromedriver`)   |
+| File | Purpose |
+| :--- | :--- |
+| `animepahe-dl.sh` | Main downloader |
+| `anime-dl` | Wrapper: refreshes the cookie, then downloads |
+| `refresh_cookie.sh` | Solves Cloudflare and updates `config.json` |
+| `get_cookie.py` | `undetected_chromedriver` automation used by `refresh_cookie.sh` |
+| `config.json` | Current `cf_clearance` + user‑agent (auto‑generated, git‑ignored) |
+| `anime.list` | Local cache of anime slugs (git‑ignored) |
+| `.source.json` | Per‑anime episode cache (stored inside the anime folder) |
 
-Notes:
+**Notes:**
 
-- `anime.list` and the per-anime `.source.json` caches are local and
-  git-ignored; anime slugs on animepahe can change over time.
-- If a batch stops after an error, re-run it — already-downloaded episodes are
-  skipped and the remaining ones continue.
+- `anime.list` and the per‑anime `.source.json` caches are local and git‑ignored; anime slugs on animepahe can change over time.
+- If a batch stops after an error, re‑run it — already‑downloaded episodes are skipped and the remaining ones continue.
+
+## Credits
+
+This project is a Termux adaptation of the original animepahe-dl bash script, with enhancements for Android, Cloudflare bypass, and native AES‑128 decryption.

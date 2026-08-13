@@ -2,14 +2,23 @@ termux-setup-storage
 
 pkg update && pkg upgrade -y
 
-mkdir -p ~/animepahe-dl
+pkg install -y x11-repo
 
-cp -r /sdcard/Download/animepahe-dl ~/animepahe-dl
+pkg install tur-repo -y
+
+pkg update
+
+pkg install -y jq fzf curl ffmpeg chromium xorg-server-xvfb python3.11 wget git
+
+pip3.11 install --upgrade pip wheel
+
+pip3.11 install setuptools selenium undetected-chromedriver pycryptodomex "yt-dlp[curl-cffi]"
+
+ln -s /data/data/com.termux/files/usr/bin/chromedriver /data/data/com.termux/files/usr/bin/chromedriver.exe
+
+cp -r /sdcard/Download/animepahe-dl ~/
 
 cd ~/animepahe-dl
 
-chmod +x setup.sh
-
 chmod +x refresh_cookie.sh animepahe-dl.sh get_cookie.py anime-dl
 
-./refresh_cookie.sh
