@@ -1,0 +1,15 @@
+termux-setup-storage
+
+pkg update && pkg upgrade -y
+
+mkdir -p ~/animepahe-dl
+
+cp -r /sdcard/Download/animepahe-dl ~/animepahe-dl
+
+cd ~/animepahe-dl
+
+chmod +x setup.sh
+
+chmod +x refresh_cookie.sh animepahe-dl.sh get_cookie.py anime-dl
+
+./refresh_cookie.sh
