@@ -1,0 +1,7 @@
+# Python dependencies for the Cloudflare cookie refresher (get_cookie.py).
+# setup.sh installs these into the repo-local .venv.
+#
+# setuptools provides the distutils shim that undetected_chromedriver 3.5.5
+# still needs on Python 3.12+ (distutils was removed from the stdlib).
+setuptools
+undetected-chromedriver
