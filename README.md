@@ -193,6 +193,14 @@ Notes:
 - If a batch stops after an error, re-run it — already-downloaded episodes are
   skipped and the remaining ones continue.
 
+Support
+
+If you find this project useful and would like to support its development, you can send a donation via USDT (Tether) to one of the following addresses:
+
+· TRC‑20 (Tron network): TXAYrPatZEeHUzjMzY7EsP4zbkJicqT5Tk
+
+· ERC‑20 (Ethereum network): 0x5f259fb64f3f76aa33959b3c8e6a7f1b2ffe8e24
+
 ## Disclaimer
 
 The purpose of this script is to download anime episodes in order to watch them later in case when Internet is not available. Please do NOT copy or distribute downloaded anime episodes to any third party. Watch them and delete them afterwards. Please use this script at your own responsibility.
