@@ -188,6 +188,14 @@ Search terms match multiple titles. Use the exact title in the fzf picker, or fi
 - `anime.list` and the per‑anime `.source.json` caches are local and git‑ignored; anime slugs on animepahe can change over time.
 - If a batch stops after an error, re‑run it — already‑downloaded episodes are skipped and the remaining ones continue.
 
+## Support
+
+If you find this project useful and would like to support its development, you can send a donation via USDT (Tether) to one of the following addresses:
+
+· TRC‑20 (Tron network): TXAYrPatZEeHUzjMzY7EsP4zbkJicqT5Tk
+
+· ERC‑20 (Ethereum network): 0x5f259fb64f3f76aa33959b3c8e6a7f1b2ffe8e24
+
 ## Credits
 
 This project is a PC animepahe-dl bash script, with enhancements for Android, Cloudflare bypass, and native AES‑128 decryption.
