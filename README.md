@@ -174,7 +174,6 @@ Search terms match multiple titles. Use the exact title in the fzf picker, or fi
 | File | Purpose |
 | :--- | :--- |
 | `animepahe-dl.sh` | Main downloader |
-| `anime-dl` | Wrapper: refreshes the cookie, then downloads |
 | `refresh_cookie.sh` | Solves Cloudflare and updates `config.json` |
 | `get_cookie.py` | `undetected_chromedriver` automation used by `refresh_cookie.sh` |
 | `config.json` | Current `cf_clearance` + user‑agent (auto‑generated, git‑ignored) |
