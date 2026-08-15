@@ -192,3 +192,7 @@ Notes:
   git-ignored; anime slugs on animepahe can change over time.
 - If a batch stops after an error, re-run it — already-downloaded episodes are
   skipped and the remaining ones continue.
+
+## Disclaimer
+
+The purpose of this script is to download anime episodes in order to watch them later in case when Internet is not available. Please do NOT copy or distribute downloaded anime episodes to any third party. Watch them and delete them afterwards. Please use this script at your own responsibility.
