@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
-bash refresh_cookie.sh || exit 1
-bash animepahe-dl.sh "$@"
