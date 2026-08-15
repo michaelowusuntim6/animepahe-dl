@@ -176,4 +176,8 @@ Search terms match multiple titles. Use the exact title in the fzf picker, or fi
 
 ## Credits
 
-This project is a Termux adaptation of the original animepahe-dl bash script, with enhancements for Android, Cloudflare bypass, and native AES‑128 decryption.
+This project is a Termux adaptation of the PC animepahe-dl bash script, with enhancements for Android, Cloudflare bypass, and native AES‑128 decryption.
+
+## Disclaimer
+
+The purpose of this script is to download anime episodes in order to watch them later in case when Internet is not available. Please do NOT copy or distribute downloaded anime episodes to any third party. Watch them and delete them afterwards. Please use this script at your own responsibility.
