@@ -10,7 +10,7 @@ The script resolves the anime's episode list from the animepahe API, unpacks the
 - Single, comma‑separated, ranged, and "all episodes" batch downloads (`-e 1,2,5-7,*`)
 - Resolution (`-r`) and audio‑language (`-o`) selection
 - Print the m3u8 URL without downloading (`-l`) to stream directly in a media player
-- Automatic Cloudflare `cf_clearance` refresh via `./refresh_cookie.sh` or the `anime-dl` wrapper
+- Automatic Cloudflare `cf_clearance` refresh via `./refresh_cookie.sh`
 - AES‑128‑encrypted HLS handled natively over HTTP/2; output remuxed to MP4
 - Concurrent fragment downloads for faster speed
 
