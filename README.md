@@ -78,7 +78,7 @@ ln -s /data/data/com.termux/files/usr/bin/chromedriver /data/data/com.termux/fil
 ### 5. Clone the downloader on your Android phone
 
 ```bash
-git clone https://github.com/michaelowusuntim6/animepahe-dl -b android
+git clone https://github.com/michaelowusuntim6/animepahe-dl.git -b android
 ```
 
 ### 6. Move into the directory
