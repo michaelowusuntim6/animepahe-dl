@@ -193,7 +193,7 @@ Notes:
 - If a batch stops after an error, re-run it — already-downloaded episodes are
   skipped and the remaining ones continue.
 
-Support
+## Support
 
 If you find this project useful and would like to support its development, you can send a donation via USDT (Tether) to one of the following addresses:
 
