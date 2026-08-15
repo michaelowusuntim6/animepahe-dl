@@ -75,7 +75,7 @@ pip3.11 install setuptools selenium undetected-chromedriver pycryptodomex "yt-dl
 ln -s /data/data/com.termux/files/usr/bin/chromedriver /data/data/com.termux/files/usr/bin/chromedriver.exe
 ```
 
-### 5. Clone the downloadeder on your Android phone
+### 5. Clone the downloader on your Android phone
 
 ```bash
 git clone https://github.com/michaelowusuntim6/animepahe-dl -b android
