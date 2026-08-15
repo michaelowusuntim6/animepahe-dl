@@ -43,38 +43,56 @@ termux-setup-storage
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install -y x11-repo
-pkg install tur-repo -y
+```
+
+```bash
+pkg install x11-repo tur-repo -y
+```
+
+```bash
 pkg update
+```
+
+```bash
 pkg install -y jq fzf curl ffmpeg chromium xorg-server-xvfb python3.11 wget git
 ```
 
 ### 3. Install Python packages
 
 ```bash
-pip3.11 install --upgrade pip wheel
-pip3.11 install setuptools selenium undetected-chromedriver pycryptodomex "yt-dlp[curl-cffi]"
+pip3.11 install --upgrade pip wheel -y
+```
+
+```bash
+pip3.11 install setuptools selenium undetected-chromedriver pycryptodomex "yt-dlp[curl-cffi]" -y
 ```
 
 ### 4. Create a symlink for chromedriver
 
-`undetected-chromedriver` expects `chromedriver.exe` on some platforms. Create a symlink:
+`undetected-chromedriver` may expect `chromedriver.exe` on some platforms. Create a symlink:
 
 ```bash
 ln -s /data/data/com.termux/files/usr/bin/chromedriver /data/data/com.termux/files/usr/bin/chromedriver.exe
 ```
 
-### 5. Copy the script files
-
-Place your `animepahe-dl` folder into the Download directory on your internal storage (e.g., using a file manager or adb), then copy it to Termux home:
+### 5. Clone the downloadeder on your Android phone
 
 ```bash
-cp -r /sdcard/Download/animepahe-dl ~/
-cd ~/animepahe-dl
-chmod +x refresh_cookie.sh animepahe-dl.sh get_cookie.py anime-dl
+git clone https://github.com/michaelowusuntim6/animepahe-dl -b android
 ```
 
-### 6. First run: refresh the cookie
+### 6. Move into the directory
+```bash
+cd ~/animepahe-dl
+```
+
+### 7. Give the scripts proper permissions
+
+```bash
+chmod +x refresh_cookie.sh animepahe-dl.sh get_cookie.py
+```
+
+### 8. First run: refresh the cookie
 
 Animepahe is behind Cloudflare, so you need a fresh `cf_clearance` cookie. Run the refresher once:
 
@@ -83,12 +101,6 @@ Animepahe is behind Cloudflare, so you need a fresh `cf_clearance` cookie. Run t
 ```
 
 This will launch a headless Chromium browser via Xvfb, solve the Turnstile challenge automatically, and write the cookie to `config.json`. If you get an error, you can manually enter the cookie (the script will prompt you).
-
-The `anime-dl` wrapper automatically refreshes the cookie before every download:
-
-```bash
-./anime-dl -a "Naruto" -e 1
-```
 
 ## Usage
 
@@ -176,7 +188,7 @@ Search terms match multiple titles. Use the exact title in the fzf picker, or fi
 
 ## Credits
 
-This project is a Termux adaptation of the PC animepahe-dl bash script, with enhancements for Android, Cloudflare bypass, and native AES‑128 decryption.
+This project is a PC animepahe-dl bash script, with enhancements for Android, Cloudflare bypass, and native AES‑128 decryption.
 
 ## Disclaimer
 
