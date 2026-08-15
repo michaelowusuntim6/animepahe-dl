@@ -31,6 +31,9 @@ Target platform: **Termux** (Android arm64/aarch64).
 
 > **Why `pycryptodomex` is essential**: the CDN that hosts the episodes (e.g. `vault-*.uwucdn.top`) rejects **HTTP/1.1** requests with 403 Forbidden. `ffmpeg`'s downloader is HTTP/1.1‑only, so `yt-dlp` must decrypt AES‑128 streams natively (over HTTP/2) using `pycryptodomex`. Never add `--downloader ffmpeg` to `yt-dlp`.
 
+You can download the Termux app from the release page or by using this link:
+https://github.com/michaelowusuntim6/animepahe-dl/releases/download/V1.00/Termux.0.119.0-beta.3.apk
+
 ## Installation (Termux)
 
 ### 1. Grant storage access
