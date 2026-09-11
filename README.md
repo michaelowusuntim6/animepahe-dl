@@ -63,11 +63,11 @@ pkg install -y jq fzf curl ffmpeg chromium xorg-server-xvfb python3.11 wget git
 ### 3. Install Python packages
 
 ```bash
-pip3.11 install --upgrade pip wheel -y
+pip3.11 install --upgrade pip wheel
 ```
 
 ```bash
-pip3.11 install setuptools selenium undetected-chromedriver pycryptodomex "yt-dlp[curl-cffi]" -y
+pip3.11 install setuptools selenium undetected-chromedriver pycryptodomex "yt-dlp[curl-cffi]"
 ```
 
 ### 4. Create a symlink for chromedriver
