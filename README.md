@@ -92,7 +92,7 @@ cd ~/animepahe-dl
 ### 7. Give the scripts proper permissions
 
 ```bash
-chmod +x refresh_cookie.sh animepahe-dl.sh get_cookie.py
+chmod +x refresh_cookie.sh animepahe-dl.sh get_cookie.py anime-dl
 ```
 
 ### 8. First run: refresh the cookie
