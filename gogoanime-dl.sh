@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Download anime from gogoanime mirrors (e.g. gogoanime.by) in terminal
-# No Cloudflare cookie, no headless browser, no JS unpacking required.
+# Auto-detects Classic Gogoanime vs WordPress clones
 #
 #/ Usage:
 #/   ./gogoanime-dl.sh [-a <anime name>] [-s <anime_slug>] [-e <episode_num1,num2,num3-num4...>] [-r <resolution>] [-o <audio>] [-l] [-d]
@@ -29,7 +29,7 @@ set_var() {
   _CURL="$(command -v curl)" || command_not_found "curl"
   _JQ="$(command -v jq)" || command_not_found "jq"
   _FZF="$(command -v fzf)" || command_not_found "fzf"
-  _YTDLP="$(command -v yt-dlp || true)"   # optional: only for rare HLS fallback
+  _YTDLP="$(command -v yt-dlp || true)"
   _SCRIPT_PATH=$(dirname "$(realpath "$0")")
   _DEFAULT_UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
   _HOST="$("$_JQ" -r '.host // empty' "$_SCRIPT_PATH/config.json" 2>/dev/null || true)"
@@ -39,10 +39,8 @@ set_var() {
   _ANIME_LIST_FILE="$_SCRIPT_PATH/anime.list"
   _SOURCE_FILE=".source.json"
   _TAB=$'\t'
-  # --- Termux download directory ---
   _DOWNLOAD_DIR="$HOME/storage/downloads/Anime"
   mkdir -p "$_DOWNLOAD_DIR"
-  # --- Concurrent fragments for yt-dlp HLS fallback (default 32) ---
   _CONCURRENT_FRAGMENTS="${_CONCURRENT_FRAGMENTS:-32}"
 }
 
@@ -70,14 +68,10 @@ print_error() { printf "%b\n" "\033[31m[ERROR]\033[0m $1" >&2; exit 1; }
 command_not_found() { print_error "$1 command not found!"; }
 
 get() {
-  # $1: url  (no cookies needed on gogoanime)
   "$_CURL" -sS -L --connect-timeout 20 "$1" \
     -A "$_USER_AGENT" -H "Accept-Language: en-US,en;q=0.9" --compressed || true
 }
 
-# ---------------------------------------------------------------- search/list
-# Transforms:  href="/category/slug" title="Some Title"
-#          ->  [slug] Some Title<3 spaces>   (same format as the old anime.list)
 format_entries() {
   sed -E 's|href="/category/|[|; s|" title="|] |; s|"$|   |'
 }
@@ -90,25 +84,51 @@ download_anime_list() {
 }
 
 search_anime_by_name() {
-  # $1: anime name
-  get "$_HOST/search.html?keyword=${1// /%20}" \
-    | grep -oE 'href="/category/[^"]+" title="[^"]+"' \
-    | format_entries \
-    | tee -a "$_ANIME_LIST_FILE" \
-    | remove_slug
+  local query="${1// /%20}"
+  local html classic_results wp_results
+  
+  # 1. Try classic Gogoanime search
+  html="$(get "$_HOST/search.html?keyword=$query")"
+  classic_results="$(grep -oE 'href="/category/[^"]+" title="[^"]+"' <<< "$html" | format_entries || true)"
+  
+  if [[ -n "$classic_results" ]]; then
+    echo "$classic_results" | tee -a "$_ANIME_LIST_FILE" | remove_slug
+    return
+  fi
+
+  # 2. Fallback to WordPress search (e.g., gogoanime.by uses /?s=)
+  print_info "Classic search not found, trying WordPress search (?s=)..."
+  html="$(get "$_HOST/?s=$query")"
+  
+  # Look for links to /series/ or any link containing the search query
+  wp_results="$(grep -oE 'href="[^"]*series/[^"]*"[^>]*>[^<]+<' <<< "$html" || true)"
+  if [[ -z "$wp_results" ]]; then
+    wp_results="$(grep -iE "href=\"[^\"]+\"[^>]*>[^<]*$1[^<]*<" <<< "$html" | head -10 || true)"
+  fi
+
+  if [[ -z "$wp_results" ]]; then
+    print_error "No search result for '$1' on $_HOST (tried both classic and WordPress search)"
+  fi
+
+  # Format for fzf: [slug] Title
+  while read -r line; do
+    local url title slug
+    url="$(echo "$line" | sed -E 's/.*href="([^"]+)".*/\1/')"
+    title="$(echo "$line" | sed -E 's/.*>([^<]+)<.*/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    slug="$(basename "$url" | sed 's|/$||')"
+    [[ -z "$slug" || "$slug" == "$_HOST" ]] && continue
+    echo "[$slug] $title   "
+  done <<< "$wp_results" | tee -a "$_ANIME_LIST_FILE" | remove_slug
 }
 
 remove_brackets() { awk -F']' '{print $1}' | sed -E 's/^\[//'; }
 remove_slug()     { awk '{$1="";print}' | awk '{$1=$1;print}'; }
 
 get_slug_from_name() {
-  # $1: anime name (exact title match, like the original)
   grep -F "] $1   " "$_ANIME_LIST_FILE" | tail -1 | remove_brackets || true
 }
 
-# ------------------------------------------------------- audio (sub/dub) pick
 category_exists() {
-  # $1: slug
   local code
   code="$("$_CURL" -s -o /dev/null -w '%{http_code}' -L --connect-timeout 20 \
             "$_HOST/category/$1" -A "$_USER_AGENT" || true)"
@@ -116,7 +136,6 @@ category_exists() {
 }
 
 resolve_audio_slug() {
-  # $1: slug ; applies -o with graceful fallback (mirrors animepahe behaviour)
   local slug="$1" audio="${_ANIME_AUDIO:-}" base
   [[ -z "$audio" ]] && { echo "$slug"; return; }
   if [[ "$audio" == "eng" ]]; then
@@ -144,32 +163,47 @@ resolve_audio_slug() {
   fi
 }
 
-# ------------------------------------------------------------ episode listing
 extract_episode_hrefs() {
-  # stdin: html -> stdout: deduped episode slugs
-  grep -oE 'href="/[^"]*-episode-[0-9]+[^"]*"' \
-    | sed -E 's|^href="/||; s|"$||' \
+  # Handles both relative (/slug-episode-1) and absolute (https://host/slug-episode-1) URLs
+  grep -oE 'href="[^"]*-episode-[0-9]+[^"]*"' \
+    | sed -E 's|^href="||; s|"$||' \
+    | sed -E 's|^https?://[^/]+||' \
+    | sed -E 's|^/||' \
     | awk '!seen[$0]++' || true
 }
 
 fetch_episode_slugs() {
-  # $1: series slug -> stdout: "num<TAB>epslug" sorted by num
+  local slug="$1"
   local html eps mid h p chunk more
-  html="$(get "$_HOST/category/$1")"
+  
+  # 1. Try classic Gogoanime category page
+  html="$(get "$_HOST/category/$slug")"
   eps="$(extract_episode_hrefs <<< "$html")"
+  
   if [[ -z "$eps" ]]; then
-    # AJAX fallback (attribute order / endpoint varies between mirrors)
+    # 2. Try WordPress series page
+    print_info "Classic category page empty, trying WordPress /series/ page..."
+    html="$(get "$_HOST/series/$slug/")"
+    eps="$(extract_episode_hrefs <<< "$html")"
+    
+    if [[ -z "$eps" ]]; then
+      # 3. Try just the base URL if /series/ doesn't exist
+      html="$(get "$_HOST/$slug/")"
+      eps="$(extract_episode_hrefs <<< "$html")"
+    fi
+  fi
+  
+  if [[ -z "$eps" ]]; then
+    # AJAX fallback for classic mirrors
     mid="$(grep -oE '<input[^>]*id="movie_id"[^>]*>' <<< "$html" | grep -oE '[0-9]+' | head -1 || true)"
     if [[ -n "$mid" ]]; then
       for h in "$_HOST" "https://ajax.gogocdn.com" "https://ajax.gogo-play.com"; do
-        # one-shot "all episodes" endpoint first ...
         chunk="$(get "$h/ajax/page-episode?id=$mid&start=1&end=99999")"
         more="$(extract_episode_hrefs <<< "$chunk")"
         [[ -n "$more" ]] && eps+=$'\n'"$more"
-        # ... then paginated endpoint
         p=1
         while (( p <= 30 )); do
-          chunk="$(get "$h/ajax/page/load_episodes?eid=$mid&episode_page=$p&alias=$1")"
+          chunk="$(get "$h/ajax/page/load_episodes?eid=$mid&episode_page=$p&alias=$slug")"
           more="$(extract_episode_hrefs <<< "$chunk")"
           [[ -z "$more" ]] && break
           eps+=$'\n'"$more"
@@ -179,6 +213,7 @@ fetch_episode_slugs() {
       done
     fi
   fi
+  
   printf '%s\n' "$eps" \
     | grep -Ee '-episode-[0-9]+' \
     | sed -E 's|^(.*)-episode-([0-9]+).*$|\2\t\1|' \
@@ -207,9 +242,7 @@ select_episodes_to_download() {
   echo "$s"
 }
 
-# --------------------------------------------------------- link extraction
 parse_download_page() {
-  # stdin: /download?id=... HTML -> stdout: "quality<TAB>url" (mp4 only)
   tr '\n' ' ' \
     | sed -E 's/<a href="/\n<a href="/g' \
     | grep -E '^<a href="https?://' \
@@ -227,7 +260,6 @@ parse_download_page() {
 }
 
 pick_quality() {
-  # $1: "quality<TAB>url" list ; applies -r with graceful fallback chain
   local want="${_ANIME_RESOLUTION:-}" r
   if [[ -n "$want" ]]; then
     print_info "Select video resolution: ${want}p"
@@ -249,11 +281,9 @@ pick_quality() {
 }
 
 get_stream_fallback() {
-  # $1: episode HTML, $2: episode slug -> stdout: m3u8 url (empty if encrypted)
   local iframe emb
   iframe="$(grep -oE '<iframe[^>]*src="[^"]+"' <<< "$1" | head -1 | sed -E 's/.*src="//; s/"$//' || true)"
   if [[ -z "$iframe" ]]; then
-    # some mirrors hide the player behind data-video buttons instead
     iframe="$(grep -oE 'data-video="[^"]+"' <<< "$1" | head -1 | sed -E 's/^data-video="//; s/"$//' || true)"
   fi
   [[ -z "$iframe" ]] && return 0
@@ -262,9 +292,7 @@ get_stream_fallback() {
   grep -oE 'https?://[^"'"'"' ]+\.m3u8[^"'"'"' ]*' <<< "$emb" | head -1 || true
 }
 
-# ---------------------------------------------------------------- downloading
 download_episodes() {
-  # $1: episode number string (same grammar as the original)
   local origel el uniqel i n s e eps fst lst source_path
   source_path="$_SCRIPT_PATH/$_ANIME_NAME/$_SOURCE_FILE"
   origel=()
@@ -296,7 +324,6 @@ download_episodes() {
 }
 
 download_episode() {
-  # $1: episode number
   local num="$1" v slug epage id links chosen q u pl src
   src="$_SCRIPT_PATH/$_ANIME_NAME/$_SOURCE_FILE"
   v="$_DOWNLOAD_DIR/${_ANIME_NAME}/${num}.mp4"
@@ -307,7 +334,13 @@ download_episode() {
   fi
   slug="$("$_JQ" -r --arg n "$num" '.[] | select(.episode == ($n|tonumber)) | .slug' "$src")"
   [[ "$slug" == "" ]] && print_warn "Episode $num not found!" && return
+  
+  # Try both classic and WordPress episode URL formats
   epage="$(get "$_HOST/$slug")"
+  if [[ -z "$epage" || "$epage" == *"404 Not Found"* ]]; then
+    epage="$(get "$_HOST/$slug-english-subbed")"
+  fi
+  
   id="$(grep -oE '(download|streaming\.php)\?id=[^"&]+' <<< "$epage" | head -1 | sed -E 's/.*id=//' || true)"
   links=""
   if [[ -n "$id" ]]; then
@@ -315,6 +348,7 @@ download_episode() {
   fi
   chosen=""
   [[ -n "$links" ]] && chosen="$(pick_quality "$links")"
+  
   if [[ -n "$chosen" ]]; then
     q="${chosen%%$_TAB*}"
     u="${chosen#*$_TAB}"
@@ -325,7 +359,7 @@ download_episode() {
       || print_warn "Direct download failed for episode $num."
     [[ -s "$v" ]] || print_warn "Empty file for episode $num; skipped."
   else
-    # HLS fallback (rare: episode without plain MP4 links)
+    # HLS/iframe fallback (essential for WordPress clones like gogoanime.by)
     pl="$(get_stream_fallback "$epage" "$slug")"
     if [[ -z "$pl" ]]; then
       print_warn "Missing video list! Skip downloading episode $num!"
@@ -333,7 +367,7 @@ download_episode() {
     fi
     if [[ -n "${_LIST_LINK_ONLY:-}" ]]; then echo "$pl"; return; fi
     [[ -z "$_YTDLP" ]] && print_warn "yt-dlp not installed; cannot use HLS fallback for episode $num." && return
-    print_info "Downloading Episode $num via HLS fallback..."
+    print_info "Downloading Episode $num via iframe/HLS fallback..."
     "$_YTDLP" "$pl" \
       --add-header "Accept: */*" \
       --extractor-args "generic:impersonate" \
@@ -382,12 +416,10 @@ main() {
     fi
   fi
   [[ "${_ANIME_SLUG:-}" == "" ]] && print_error "Anime slug not found!"
-  # Apply -o (eng/jpn) with graceful fallback before anything else
   _ANIME_SLUG="$(resolve_audio_slug "$_ANIME_SLUG")"
   _ANIME_NAME="$(grep -F "[$_ANIME_SLUG]" "$_ANIME_LIST_FILE" \
     | tail -1 | remove_slug | sed -E 's/[[:space:]]+$//' || true)"
   if [[ -z "${_ANIME_NAME:-}" ]]; then
-    # slug not in cache (e.g. derived -dub variant): derive a clean folder name
     _ANIME_NAME="$(sed -E 's/-/ /g' <<< "$_ANIME_SLUG")"
   fi
   _ANIME_NAME="$(sed -E 's/[^[:alnum:] ,\+\-\)\(]/_/g' <<< "$_ANIME_NAME")"
