@@ -59,8 +59,9 @@ set_args() {
   done
 }
 
-print_info()  { [[ -z "${_LIST_LINK_ONLY:-}" ]] && printf "%b\n" "\033[32m[INFO]\033[0m $1" >&2; }
-print_warn()  { [[ -z "${_LIST_LINK_ONLY:-}" ]] && printf "%b\n" "\033[33m[WARNING]\033[0m $1" >&2; }
+# Added `|| true` to prevent set -e from killing the script when _LIST_LINK_ONLY is true
+print_info()  { [[ -z "${_LIST_LINK_ONLY:-}" ]] && printf "%b\n" "\033[32m[INFO]\033[0m $1" >&2 || true; }
+print_warn()  { [[ -z "${_LIST_LINK_ONLY:-}" ]] && printf "%b\n" "\033[33m[WARNING]\033[0m $1" >&2 || true; }
 print_error() { printf "%b\n" "\033[31m[ERROR]\033[0m $1" >&2; exit 1; }
 command_not_found() { print_error "$1 command not found!"; }
 
@@ -278,8 +279,11 @@ download_episode() {
   [[ -s "$v" ]] || print_warn "Empty file for episode $num; skipped."
 }
 
+# Fixed: Using `if` instead of `&&` to prevent a silent exit code 1 under `set -e`
 check_config() {
-  [[ -z "${_HOST:-}" ]] && print_error "Empty host in config.json."
+  if [[ -z "${_HOST:-}" ]]; then
+    print_error "Empty host in config.json."
+  fi
 }
 
 main() {
@@ -294,13 +298,23 @@ main() {
     read -r query
   fi
   if [[ -n "${query:-}" ]]; then
-    res="$(search_anime_by_name "$query")"
-    [[ -z "$res" ]] && print_error "No search result for '$query' on $_HOST"
-    # cache as "[id] Title   " and feed titles to fzf
+    print_info "Searching '$query' on $_HOST ..."
+    res="$(search_anime_by_name "$query")" || true
+    if [[ -z "$res" ]]; then
+      print_error "No search result for '$query' on $_HOST"
+    fi
+    : > "$_SCRIPT_PATH/.picker.tmp"
     while IFS="$_TAB" read -r id title; do
       printf '[%s] %s   \n' "$id" "$title"
     done <<< "$res" | tee -a "$_ANIME_LIST_FILE" > "$_SCRIPT_PATH/.picker.tmp"
-    _ANIME_NAME="$("$_FZF" -1 <<< "$(remove_slug < "$_SCRIPT_PATH/.picker.tmp")")"
+    _picker_list="$(remove_slug < "$_SCRIPT_PATH/.picker.tmp")"
+    if [[ -z "$_picker_list" ]]; then
+      print_error "Search returned unparseable results for '$query'."
+    fi
+    _ANIME_NAME="$("$_FZF" -1 <<< "$_picker_list" || true)"
+    if [[ -z "$_ANIME_NAME" ]]; then
+      print_error "No anime selected (fzf returned nothing)."
+    fi
     rm -f "$_SCRIPT_PATH/.picker.tmp"
     _ANIME_SLUG="$(get_slug_from_name "$_ANIME_NAME")"
   fi
