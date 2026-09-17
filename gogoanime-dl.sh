@@ -38,6 +38,7 @@ set_var() {
   [[ -z "${_USER_AGENT:-}" ]] && _USER_AGENT="$_DEFAULT_UA"
   _ANIME_LIST_FILE="$_SCRIPT_PATH/anime.list"
   _SOURCE_FILE=".source.json"
+  _TAB=$'\t'
   # --- Termux download directory ---
   _DOWNLOAD_DIR="$HOME/storage/downloads/Anime"
   mkdir -p "$_DOWNLOAD_DIR"
@@ -70,14 +71,21 @@ command_not_found() { print_error "$1 command not found!"; }
 
 get() {
   # $1: url  (no cookies needed on gogoanime)
-  "$_CURL" -sS -L "$1" -A "$_USER_AGENT" -H "Accept-Language: en-US,en;q=0.9" --compressed || true
+  "$_CURL" -sS -L --connect-timeout 20 "$1" \
+    -A "$_USER_AGENT" -H "Accept-Language: en-US,en;q=0.9" --compressed || true
 }
 
 # ---------------------------------------------------------------- search/list
+# Transforms:  href="/category/slug" title="Some Title"
+#          ->  [slug] Some Title<3 spaces>   (same format as the old anime.list)
+format_entries() {
+  sed -E 's|href="/category/|[|; s|" title="|] |; s|"$|   |'
+}
+
 download_anime_list() {
   get "$_HOST/anime-list.html" \
     | grep -oE 'href="/category/[^"]+" title="[^"]+"' \
-    | sed -E 's|href="/category/|[/; s/" title="/] /; s/"$/   /' \
+    | format_entries \
     > "$_ANIME_LIST_FILE" || true
 }
 
@@ -85,7 +93,7 @@ search_anime_by_name() {
   # $1: anime name
   get "$_HOST/search.html?keyword=${1// /%20}" \
     | grep -oE 'href="/category/[^"]+" title="[^"]+"' \
-    | sed -E 's|href="/category/|[/; s/" title="/] /; s/"$/   /' \
+    | format_entries \
     | tee -a "$_ANIME_LIST_FILE" \
     | remove_slug
 }
@@ -102,7 +110,8 @@ get_slug_from_name() {
 category_exists() {
   # $1: slug
   local code
-  code="$("$_CURL" -s -o /dev/null -w '%{http_code}' -L "$_HOST/category/$1" -A "$_USER_AGENT" || true)"
+  code="$("$_CURL" -s -o /dev/null -w '%{http_code}' -L --connect-timeout 20 \
+            "$_HOST/category/$1" -A "$_USER_AGENT" || true)"
   [[ "$code" == "200" ]]
 }
 
@@ -136,22 +145,32 @@ resolve_audio_slug() {
 }
 
 # ------------------------------------------------------------ episode listing
+extract_episode_hrefs() {
+  # stdin: html -> stdout: deduped episode slugs
+  grep -oE 'href="/[^"]*-episode-[0-9]+[^"]*"' \
+    | sed -E 's|^href="/||; s|"$||' \
+    | awk '!seen[$0]++' || true
+}
+
 fetch_episode_slugs() {
   # $1: series slug -> stdout: "num<TAB>epslug" sorted by num
   local html eps mid h p chunk more
   html="$(get "$_HOST/category/$1")"
-  eps="$(grep -oE 'href="/[^"]*-episode-[0-9]+[^"]*"' <<< "$html" \
-         | sed -E 's|^href="/||; s|"$||' | awk '!seen[$0]++' || true)"
+  eps="$(extract_episode_hrefs <<< "$html")"
   if [[ -z "$eps" ]]; then
-    # AJAX fallback (attribute order varies between mirrors)
+    # AJAX fallback (attribute order / endpoint varies between mirrors)
     mid="$(grep -oE '<input[^>]*id="movie_id"[^>]*>' <<< "$html" | grep -oE '[0-9]+' | head -1 || true)"
     if [[ -n "$mid" ]]; then
       for h in "$_HOST" "https://ajax.gogocdn.com" "https://ajax.gogo-play.com"; do
+        # one-shot "all episodes" endpoint first ...
+        chunk="$(get "$h/ajax/page-episode?id=$mid&start=1&end=99999")"
+        more="$(extract_episode_hrefs <<< "$chunk")"
+        [[ -n "$more" ]] && eps+=$'\n'"$more"
+        # ... then paginated endpoint
         p=1
         while (( p <= 30 )); do
-          chunk="$(get "$h/ajax/page/load_episodes?eid=$mid&episode_page=$p")"
-          more="$(grep -oE 'href="/[^"]*-episode-[0-9]+[^"]*"' <<< "$chunk" \
-                  | sed -E 's|^href="/||; s|"$||' || true)"
+          chunk="$(get "$h/ajax/page/load_episodes?eid=$mid&episode_page=$p&alias=$1")"
+          more="$(extract_episode_hrefs <<< "$chunk")"
           [[ -z "$more" ]] && break
           eps+=$'\n'"$more"
           p=$((p+1))
@@ -161,9 +180,9 @@ fetch_episode_slugs() {
     fi
   fi
   printf '%s\n' "$eps" \
-    | grep -E '-episode-[0-9]+' \
+    | grep -Ee '-episode-[0-9]+' \
     | sed -E 's|^(.*)-episode-([0-9]+).*$|\2\t\1|' \
-    | sort -t "$(printf '\t')" -k1,1n -u || true
+    | sort -t "$_TAB" -k1,1n -u || true
 }
 
 download_source() {
@@ -197,10 +216,13 @@ parse_download_page() {
     | awk '{
         url=$0; sub(/^<a href="/,"",url); sub(/".*/,"",url);
         line=tolower($0);
+        q="";
         if (match(line, /\([0-9]+p\)/)) {
           q=substr(line, RSTART+1, RLENGTH-2);
-          print q "\t" url;
+        } else if (match(line, />[0-9]+p *</)) {
+          q=substr(line, RSTART+1, RLENGTH-3);
         }
+        if (q != "" && url ~ /\.mp4/) print q "\t" url;
       }' || true
 }
 
@@ -217,11 +239,11 @@ pick_quality() {
     fi
     if [[ -z "$r" ]]; then
       print_warn "Default resolution unavailable too; using highest available."
-      r="$(sort -t "$(printf '\t')" -k1,1n <<< "$1" | tail -1)"
+      r="$(sort -t "$_TAB" -k1,1n <<< "$1" | tail -1)"
     fi
   else
-    r="$(sort -t "$(printf '\t')" -k1,1n <<< "$1" | tail -1)"
-    print_info "Using highest available resolution: ${r%%$(printf '\t')*}p"
+    r="$(sort -t "$_TAB" -k1,1n <<< "$1" | tail -1)"
+    print_info "Using highest available resolution: ${r%%$_TAB*}p"
   fi
   echo "$r"
 }
@@ -230,9 +252,13 @@ get_stream_fallback() {
   # $1: episode HTML, $2: episode slug -> stdout: m3u8 url (empty if encrypted)
   local iframe emb
   iframe="$(grep -oE '<iframe[^>]*src="[^"]+"' <<< "$1" | head -1 | sed -E 's/.*src="//; s/"$//' || true)"
+  if [[ -z "$iframe" ]]; then
+    # some mirrors hide the player behind data-video buttons instead
+    iframe="$(grep -oE 'data-video="[^"]+"' <<< "$1" | head -1 | sed -E 's/^data-video="//; s/"$//' || true)"
+  fi
   [[ -z "$iframe" ]] && return 0
   case "$iframe" in //*) iframe="https:$iframe" ;; esac
-  emb="$("$_CURL" -sS -L -A "$_USER_AGENT" -e "$_HOST/$2" --compressed "$iframe" || true)"
+  emb="$("$_CURL" -sS -L --connect-timeout 20 -A "$_USER_AGENT" -e "$_HOST/$2" --compressed "$iframe" || true)"
   grep -oE 'https?://[^"'"'"' ]+\.m3u8[^"'"'"' ]*' <<< "$emb" | head -1 || true
 }
 
@@ -290,11 +316,12 @@ download_episode() {
   chosen=""
   [[ -n "$links" ]] && chosen="$(pick_quality "$links")"
   if [[ -n "$chosen" ]]; then
-    q="${chosen%%$(printf '\t')*}"
-    u="${chosen#*$(printf '\t')}"
+    q="${chosen%%$_TAB*}"
+    u="${chosen#*$_TAB}"
     if [[ -n "${_LIST_LINK_ONLY:-}" ]]; then echo "$u"; return; fi
     print_info "Downloading Episode $num (${q}p) ..."
-    "$_CURL" -sS -L -C - -o "$v" -A "$_USER_AGENT" -e "$_HOST/$slug" -H "Accept: */*" "$u" \
+    "$_CURL" -sS -L -C - --retry 3 -o "$v" \
+      -A "$_USER_AGENT" -e "$_HOST/$slug" -H "Accept: */*" "$u" \
       || print_warn "Direct download failed for episode $num."
     [[ -s "$v" ]] || print_warn "Empty file for episode $num; skipped."
   else
