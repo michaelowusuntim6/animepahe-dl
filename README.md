@@ -43,7 +43,7 @@ pkg install -y jq fzf git curl ffmpeg yt-dlp
 ```
 3. Clone the downloader on your Android phone
 ```bash
-git clone [https://github.com/michaelowusuntim6/animepahe-dl.git](https://github.com/michaelowusuntim6/animepahe-dl.git) -b gogo
+git clone https://github.com/michaelowusuntim6/animepahe-dl.git -b gogo
 ```
 4. Move into the directory
 ```bash
