@@ -37,6 +37,8 @@ termux-setup-storage
 2. Install system packages
 ```bash
 pkg update && pkg upgrade -y
+```
+```bash
 pkg install -y jq fzf curl ffmpeg yt-dlp
 ```
 3. Clone the downloader on your Android phone
